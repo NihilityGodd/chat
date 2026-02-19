@@ -326,12 +326,105 @@
             cursor: pointer;
             width: 100%;
         }
+        /* 会话列表页 */
+        .list-page {
+            background: #f5f5f7;
+        }
+        .list-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 50px 20px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .list-header h1 {
+            font-size: 22px;
+            font-weight: 600;
+        }
+        .new-match-btn {
+            background: white;
+            color: #667eea;
+            border: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .session-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        .session-item {
+            background: white;
+            border-radius: 16px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .session-item:hover { background: #f0f0f0; }
+        .session-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        .session-info {
+            flex: 1;
+        }
+        .session-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+        .session-meta {
+            font-size: 13px;
+            color: #999;
+        }
+        .session-time {
+            font-size: 12px;
+            color: #ccc;
+        }
+        .no-sessions {
+            text-align: center;
+            color: #999;
+            margin-top: 50px;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
-
+<!-- 会话列表页 -->
+<div class="page list-page" id="listPage">
+    <div class="list-header">
+        <h1>偶遇</h1>
+        <div class="new-match-btn" onclick="goToFilter()">+</div>
+    </div>
+    <div class="session-list" id="sessionList">
+        <!-- 动态加载会话列表 -->
+        <div class="no-sessions">暂无会话，点击 + 开始匹配</div>
+    </div>
+</div>
 <!-- 筛选页面 -->
-<div class="page active" id="filterPage">
+<div class="page" id="filterPage">
     <div class="filter-header">
         <h1>🔍 寻找附近的人</h1>
         <p>设置你的偏好，遇见有趣的灵魂</p>
@@ -454,6 +547,83 @@ let currentPersona = null;
 let currentUserId = localStorage.getItem('user_id') || 'user_' + Math.random().toString(36).substr(2, 9);
 localStorage.setItem('user_id', currentUserId);
 
+
+let sessions = []; // 存储所有会话人设
+
+// 加载会话列表
+async function loadSessions() {
+    try {
+        const res = await fetch(`${API_BASE}/api/matches/${currentUserId}`);
+        sessions = await res.json();
+        renderSessionList();
+    } catch(e) {
+        console.error('加载会话列表失败', e);
+    }
+}
+
+// 渲染会话列表
+function renderSessionList() {
+    const container = document.getElementById('sessionList');
+    if (sessions.length === 0) {
+        container.innerHTML = '<div class="no-sessions">暂无会话，点击 + 开始匹配</div>';
+        return;
+    }
+    let html = '';
+    sessions.forEach(s => {
+        const avatar = s.gender === 'male' ? '👨' : '👩';
+        const lastTime = s.last_time ? new Date(s.last_time).toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'}) : '刚刚';
+        html += `
+            <div class="session-item" onclick="selectSession('${s.id}')">
+                <div class="session-avatar">${avatar}</div>
+                <div class="session-info">
+                    <div class="session-name">${s.name}，${s.age}</div>
+                    <div class="session-meta">${s.job} · ${s.city} · ${s.distance}km</div>
+                </div>
+                <div class="session-time">${lastTime}</div>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+}
+
+// 选择某个会话进入聊天
+function selectSession(personaId) {
+    const persona = sessions.find(s => s.id === personaId);
+    if (!persona) return;
+    currentPersona = persona; // 赋值当前人设
+    // 切换页面到聊天页
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('chatPage').classList.add('active');
+    // 设置聊天页头部信息
+    document.getElementById('chatName').textContent = persona.name;
+    // 加载该会话的历史消息
+    loadChatHistory(persona.id);
+}
+
+// 加载指定人设的聊天历史
+async function loadChatHistory(personaId) {
+    const chatBox = document.getElementById('chatBox');
+    chatBox.innerHTML = '<div class="msg-time" id="startTime">' + new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'}) + '</div>';
+    try {
+        const res = await fetch(`${API_BASE}/api/history/${currentUserId}/${personaId}`);
+        const history = await res.json();
+        history.forEach(h => addMessage(h.content, h.role === 'user', false));
+    } catch(e) {
+        console.error(e);
+    }
+}
+
+// 跳转到筛选页（点击 + 按钮）
+function goToFilter() {
+    // 清除结果页的内联样式，确保正常显示
+    document.getElementById('resultPage').style.display = '';
+    document.getElementById('resultCard').style.display = '';
+    document.getElementById('matchPage').style.display = '';
+    // 切换到筛选页
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('filterPage').classList.add('active');
+}
+    
 // 初始化选项点击
 document.querySelectorAll('.options').forEach(container => {
     container.addEventListener('click', e => {
@@ -513,12 +683,12 @@ function showResult(persona) {
     document.getElementById('matchPage').style.display = 'none';
     document.getElementById('resultPage').style.display = 'flex';
     document.getElementById('resultCard').style.display = 'block';
-    
+
     // 填充信息
     document.getElementById('resultName').textContent = `${persona.name}，${persona.age}`;
     document.getElementById('resultMeta').textContent = `${persona.job} · ${persona.city} · ${persona.distance}km`;
     document.getElementById('resultAvatar').textContent = persona.gender === 'male' ? '👨' : '👩';
-    
+
     const tagsContainer = document.getElementById('resultTags');
     tagsContainer.innerHTML = '';
     persona.tags.forEach(tag => {
@@ -527,8 +697,8 @@ function showResult(persona) {
         span.textContent = tag;
         tagsContainer.appendChild(span);
     });
-    
-    // 执行匹配记录
+
+    // 执行匹配记录，成功后刷新会话列表并跳转到聊天
     fetch(`${API_BASE}/api/match`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -536,37 +706,32 @@ function showResult(persona) {
             user_id: currentUserId,
             persona_id: persona.id
         })
-    });
+    }).then(() => {
+        // 将新人设添加到会话列表（如果尚未存在）
+        if (!sessions.find(s => s.id === persona.id)) {
+            sessions.unshift(persona); // 插入到最前面
+        }
+        currentPersona = persona; // 设置为当前人设
+        // 直接进入聊天页
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById('chatPage').classList.add('active');
+        document.getElementById('chatName').textContent = persona.name;
+        // 清空聊天框并显示问候语
+        document.getElementById('chatBox').innerHTML = '<div class="msg-time" id="startTime">' + new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'}) + '</div>';
+        // 根据性格生成问候语
+        setTimeout(() => {
+            let greeting = "嗨～看到你的资料觉得挺有缘的，交个朋友吗？😊";
+            if (currentFilter.personality === 'cool') greeting = "你好，资料看了，聊两句？";
+            if (currentFilter.personality === 'humor') greeting = "哈喽！你也是附近的人？我还以为附近只有外卖小哥呢😂";
+            addMessage(greeting, false);
+            // 这里不需要保存到 history，因为后端会在 /api/chat 中保存
+        }, 1000);
+    }).catch(e => console.error(e));
 }
 
-async function enterChat() {
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    document.getElementById('chatPage').classList.add('active');
-    
-    document.getElementById('chatName').textContent = currentPersona.name;
-    
-    // 加载历史记录
-    try {
-        const res = await fetch(`${API_BASE}/api/history/${currentUserId}/${currentPersona.id}`);
-        const history = await res.json();
-        
-        if(history.length === 0) {
-            // 首次聊天，AI主动打招呼
-            setTimeout(() => {
-                let greeting = "嗨～看到你的资料觉得挺有缘的，交个朋友吗？😊";
-                if(currentFilter.personality === 'cool') greeting = "你好，资料看了，聊两句？";
-                if(currentFilter.personality === 'humor') greeting = "哈喽！你也是附近的人？我还以为附近只有外卖小哥呢😂";
-                
-                addMessage(greeting, false);
-                saveToHistory('assistant', greeting);
-            }, 1000);
-        } else {
-            // 显示历史
-            history.forEach(h => addMessage(h.content, h.role === 'user', false));
-        }
-    } catch(e) {
-        console.error(e);
-    }
+function enterChat() {
+    // 此函数在新流程中不应该被直接调用，但保留以防万一
+    console.warn('enterChat 已废弃，使用 selectSession 或新匹配流程');
 }
 
 async function sendMessage() {
@@ -635,17 +800,26 @@ function handleEnter(e) {
 }
 
 function goBack() {
-    if(confirm('确定要结束这次对话吗？')) {
-        location.reload();
-    }
+    // 确认退出聊天？可以简单返回列表
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('listPage').classList.add('active');
+    // 刷新会话列表
+    loadSessions();
 }
 
 // 设置当前时间
 const now = new Date();
 const timeStr = `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
 document.getElementById('startTime').textContent = timeStr;
+
+// 加载会话列表，默认显示列表页
+loadSessions();
+// 确保列表页显示，其他隐藏
+document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+document.getElementById('listPage').classList.add('active');
 </script>
 
 </body>
 
 </html>
+
